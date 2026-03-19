@@ -1,0 +1,145 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+}
+
+enum MemberRole {
+  ADMIN
+  MEMBER
+}
+
+enum EventStatus {
+  ACTIVE
+  CLOSED
+}
+
+model User {
+  id               String    @id @default(uuid())
+  fullName         String
+  username         String    @unique
+  email            String    @unique
+  phone            String    @unique
+  hcode            String    @unique
+  profilePicUrl    String?
+  isVerified       Boolean   @default(false)
+  verificationCode String?
+  verificationExp  DateTime?
+  googleId         String?   @unique
+  passwordHash     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  groupMemberships GroupMember[]
+  createdGroups    Group[]       @relation("GroupCreator")
+  createdEvents    Event[]
+  eventInvites     EventInvite[]
+  smsLogs          SMSLog[]
+
+  @@index([email])
+  @@index([hcode])
+}
+
+model Group {
+  id        String   @id @default(uuid())
+  name      String
+  username  String   @unique
+  hcode     String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  creator User          @relation("GroupCreator", fields: [createdBy], references: [id])
+  members GroupMember[]
+  events  Event[]
+
+  @@index([username])
+}
+
+model GroupMember {
+  id       String     @id @default(uuid())
+  groupId  String
+  userId   String
+  role     MemberRole @default(MEMBER)
+  joinedAt DateTime   @default(now())
+
+  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model Event {
+  id              String      @id @default(uuid())
+  groupId         String
+  createdBy       String
+  title           String
+  meetingHcode    String
+  meetingDateTime DateTime
+  endTime         DateTime?
+  durationMinutes Int?
+  amountPerMember Float
+  status          EventStatus @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+
+  group   Group         @relation(fields: [groupId], references: [id])
+  creator User          @relation(fields: [createdBy], references: [id])
+  invites EventInvite[]
+  report  EventReport?
+  smsLogs SMSLog[]
+
+  @@index([groupId])
+  @@index([status])
+}
+
+model EventInvite {
+  id              String        @id @default(uuid())
+  eventId         String
+  invitedUserId   String
+  paymentStatus   PaymentStatus @default(PENDING)
+  mpesaCheckoutId String?
+  transactionId   String?
+  paidAmount      Float         @default(0)
+  paidAt          DateTime?
+  emailSent       Boolean       @default(false)
+  smsSent         Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [invitedUserId], references: [id])
+
+  @@unique([eventId, invitedUserId])
+  @@index([paymentStatus])
+}
+
+model EventReport {
+  id          String   @id @default(uuid())
+  eventId     String   @unique
+  allPresent  Boolean
+  absenteeIds String[]
+  goodsCounts Json
+  aops        Json
+  createdAt   DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id])
+}
+
+model SMSLog {
+  id        String   @id @default(uuid())
+  eventId   String
+  sentBy    String
+  message   String
+  totalSent Int
+  createdAt DateTime @default(now())
+
+  event  Event @relation(fields: [eventId], references: [id])
+  sender User  @relation(fields: [sentBy], references: [id])
+}
